@@ -1,136 +1,52 @@
 package main
 
 import (
-	"encoding/csv"
-	"fmt"
-	"log"
 	"os"
-	"strconv"
+
+	"github.com/jessevdk/go-flags"
 )
 
-type PlayLog struct {
-	CreatedAt  string
-	PlayID     string
-	Score      uint32
-	HandleName string
-}
-type ranking struct {
-	Rank       uint32
-	PlayerID   string
-	HandleName string
-	Score      uint32
-}
-
-func ReadCSVFile(filepath string) ([][]string, error) {
-	file, err := os.Open(filepath)
+func readInput() (Options, Entries, Scores, error) {
+	var opts Options
+	_, err := flags.Parse(&opts)
 	if err != nil {
-		return nil, err
+		return opts, nil, nil, err
 	}
-	defer file.Close()
 
-	reader := csv.NewReader(file)
-
-	records, err := reader.ReadAll()
+	//entries := NewEntries("game_entry_log.csv")
+	entries, err := NewEntries(opts.Args.EntryFile)
 	if err != nil {
-		return nil, err
+		return opts, nil, nil, err
 	}
 
-	return records, nil
+	//scores := NewScores("game_score_log.csv")
+	scores, err := NewScores(opts.Args.ScoreFile)
+	if err != nil {
+		return opts, nil, nil, err
+	}
+
+	return opts, entries, scores, nil
 }
 
-func createRanking(playlogs map[string]PlayLog) ([]ranking, error) {
-	// PlayLogからrankingへ変換
-	var rlist []ranking
-	for _, logItem := range playlogs {
-		rlist = append(rlist, ranking{
-			PlayerID:   logItem.PlayID,
-			HandleName: logItem.HandleName,
-			Score:      logItem.Score,
-		})
-	}
-	// クイックソートでScoreの降順にソート
-	quickSortRanking(rlist, 0, len(rlist)-1)
-	// 順位番号の設定
-	for i := range rlist {
-		rlist[i].Rank = uint32(i + 1)
-	}
-	return rlist, nil
+func processRanking(entries Entries, scores Scores, opts Options) Rankings {
+	rankings := NewRanking(entries, scores)
+	rankingOptions := NewRankingOptions(opts)
+	rankings = applyRankingOptions(rankings, rankingOptions...)
+	return rankings
 }
 
-// クイックソートのヘルパー関数
-func quickSortRanking(arr []ranking, low, high int) {
-	if low < high {
-		p := partition(arr, low, high)
-		quickSortRanking(arr, low, p-1)
-		quickSortRanking(arr, p+1, high)
-	}
-}
-
-func partition(arr []ranking, low, high int) int {
-	pivot := arr[high].Score
-	i := low - 1
-	for j := low; j < high; j++ {
-		if arr[j].Score > pivot { // 降順
-			i++
-			arr[i], arr[j] = arr[j], arr[i]
-		}
-	}
-	arr[i+1], arr[high] = arr[high], arr[i+1]
-	return i + 1
+func outputRanking(rankings Rankings) {
+	rankings.Print()
 }
 
 func main() {
-
-	play_logs, err := ReadCSVFile("play_logs.csv")
+	opts, entries, scores, err := readInput()
 	if err != nil {
-		log.Fatal("Error reading play_logs.csv: %v", err)
-		return
-
+		os.Stderr.WriteString(err.Error())
+		os.Exit(1)
 	}
 
-	entries, err := ReadCSVFile("entries.csv")
-	if err != nil {
-		log.Fatal("Error reading entries.csv: %v", err)
-		return
-	}
+	rankings := processRanking(entries, scores, opts)
 
-	plalog := make(map[string]PlayLog, len(play_logs))
-
-	for i, record := range play_logs {
-		if i == 0 { // ヘッダー行をスキップ
-			continue
-		}
-		plalog[record[1]] = PlayLog{
-			CreatedAt: record[0],
-			PlayID:    record[1],
-			Score: func() uint32 {
-				score, err := strconv.ParseUint(record[2], 10, 32)
-				if err != nil {
-					log.Fatalf("Error parsing score: %v", err)
-				}
-				return uint32(score)
-			}(),
-		}
-	}
-	for i, record := range entries {
-		if i == 0 { // ヘッダー行をスキップ
-			continue
-		}
-		entry := plalog[record[0]]
-		entry.HandleName = record[1]
-		plalog[record[0]] = entry
-	}
-
-	rankings, err := createRanking(plalog)
-	if err != nil {
-		log.Fatal("Error creating ranking: %v", err)
-		return
-	}
-	for _, record := range rankings {
-		fmt.Println(record.PlayerID)
-		fmt.Println(record.HandleName)
-		fmt.Println(record.Score)
-		fmt.Println("\n")
-	}
-
+	outputRanking(rankings)
 }
