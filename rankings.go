@@ -51,12 +51,8 @@ func NewRanking(entries Entries, scores Scores) Rankings {
 }
 
 func (r Rankings) Print() {
-	if len(r) == 0 {
-		return
-	}
-
 	// ヘッダーを生成
-	rankingType := reflect.TypeOf(r[0])
+	rankingType := reflect.TypeOf(Ranking{})
 	headers := make([]string, rankingType.NumField())
 	for i := 0; i < rankingType.NumField(); i++ {
 		field := rankingType.Field(i)
@@ -69,8 +65,7 @@ func (r Rankings) Print() {
 	fmt.Println(strings.Join(headers, ","))
 
 	// 各ランキングの出力
-	for i, ranking := range r {
-		ranking.Rank = i + 1
+	for _, ranking := range r {
 		value := reflect.ValueOf(ranking)
 		row := make([]string, value.NumField())
 		for j := 0; j < value.NumField(); j++ {

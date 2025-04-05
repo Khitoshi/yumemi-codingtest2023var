@@ -6,6 +6,10 @@ import (
 	"github.com/jessevdk/go-flags"
 )
 
+const (
+	LIMIT_PLAYER = 10 // ランキングの上限人数
+)
+
 func readInput() (Options, Entries, Scores, error) {
 	var opts Options
 	_, err := flags.Parse(&opts)
@@ -13,13 +17,11 @@ func readInput() (Options, Entries, Scores, error) {
 		return opts, nil, nil, err
 	}
 
-	//entries := NewEntries("game_entry_log.csv")
 	entries, err := NewEntries(opts.Args.EntryFile)
 	if err != nil {
 		return opts, nil, nil, err
 	}
 
-	//scores := NewScores("game_score_log.csv")
 	scores, err := NewScores(opts.Args.ScoreFile)
 	if err != nil {
 		return opts, nil, nil, err
@@ -28,9 +30,9 @@ func readInput() (Options, Entries, Scores, error) {
 	return opts, entries, scores, nil
 }
 
-func processRanking(entries Entries, scores Scores, opts Options) Rankings {
+func processRanking(entries Entries, scores Scores) Rankings {
 	rankings := NewRanking(entries, scores)
-	rankingOptions := NewRankingOptions(opts)
+	rankingOptions := []RankingOption{WithSamePlayer(), WithDescendingScore(), WithSameRank(), WithSameRankPlayerID(), WithLimit(LIMIT_PLAYER)}
 	rankings = applyRankingOptions(rankings, rankingOptions...)
 	return rankings
 }
@@ -40,13 +42,13 @@ func outputRanking(rankings Rankings) {
 }
 
 func main() {
-	opts, entries, scores, err := readInput()
+	_, entries, scores, err := readInput()
 	if err != nil {
 		os.Stderr.WriteString(err.Error())
 		os.Exit(1)
 	}
 
-	rankings := processRanking(entries, scores, opts)
+	rankings := processRanking(entries, scores)
 
 	outputRanking(rankings)
 }

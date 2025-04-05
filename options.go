@@ -8,9 +8,6 @@ import (
 )
 
 type Options struct {
-	Desc  bool `short:"d" long:"desc" description:"スコアを降順にソートする"`
-	Limit int  `short:"l" long:"limit" default:"0" description:"上位ランキングの件数制限（0の場合は制限なし）"`
-
 	Args struct {
 		EntryFile string `positional-arg-name:"entry" required:"yes" description:"エントリCSVファイルパス"`
 		ScoreFile string `positional-arg-name:"score" required:"yes" description:"スコアCSVファイルパス"`
@@ -20,25 +17,19 @@ type Options struct {
 // RankingOption はランキングスライスに対して任意の変換を行うフック関数
 type RankingOption func(Rankings) Rankings
 
-func NewRankingOptions(opts Options) []RankingOption {
-	rankingOptions := []RankingOption{}
-	if opts.Limit > 0 {
-		rankingOptions = append(rankingOptions, WithLimit(opts.Limit))
-	}
-
-	if opts.Desc {
-		rankingOptions = append(rankingOptions, WithDescendingScore())
-	}
-	return rankingOptions
-}
-
 // 上位n件に制限するオプション
 func WithLimit(n int) RankingOption {
 	return func(rankings Rankings) Rankings {
-		if len(rankings) > n {
-			return rankings[:n]
+		newRankings := make(Rankings, 0, n)
+		for _, r := range rankings {
+			if r.Rank > n {
+				break
+			}
+
+			newRankings = append(newRankings, r)
 		}
-		return rankings
+
+		return newRankings
 	}
 }
 
@@ -77,4 +68,70 @@ func applyRankingOptions(rankings Rankings, opts ...RankingOption) Rankings {
 		rankings = opt(rankings)
 	}
 	return rankings
+}
+
+// スコアが同じ場合Rankを同じにするオプション
+func WithSameRank() RankingOption {
+	return func(rankings Rankings) Rankings {
+		if len(rankings) == 0 {
+			return rankings
+		}
+		// 先頭のランクを1に設定
+		rankings[0].Rank = 1
+		// 先頭のスコアを取得
+		prevScore := parseScore(rankings[0].Score)
+		prevRank := 1
+		for i := 1; i < len(rankings); i++ {
+			currentScore := parseScore(rankings[i].Score)
+			if currentScore == prevScore {
+				// 前のスコアと同じなら同一ランク
+				rankings[i].Rank = prevRank
+			} else {
+				// 異なる場合は順位=i+1として更新
+				rankings[i].Rank = i + 1
+				prevRank = i + 1
+				prevScore = currentScore
+			}
+		}
+		return rankings
+	}
+}
+
+// 重複する順位の場合はplyerIDでソートするオプション
+func WithSameRankPlayerID() RankingOption {
+	return func(rankings Rankings) Rankings {
+		if len(rankings) == 0 {
+			return rankings
+		}
+		sort.Slice(rankings, func(i, j int) bool {
+			if rankings[i].Rank != rankings[j].Rank {
+				return rankings[i].Rank < rankings[j].Rank
+			}
+			return rankings[i].PlayerID < rankings[j].PlayerID
+		})
+		return rankings
+	}
+}
+
+// 同一プレイヤーが複数エントリしている場合、スコアが高い方のみを残すオプション
+func WithSamePlayer() RankingOption {
+	return func(rankings Rankings) Rankings {
+		best := make(map[string]Ranking)
+		for _, r := range rankings {
+
+			if _, ok := best[r.PlayerID]; !ok {
+				best[r.PlayerID] = r
+			}
+
+			if parseScore(r.Score) > parseScore(best[r.PlayerID].Score) {
+				best[r.PlayerID] = r
+			}
+		}
+		filtered := make(Rankings, 0, len(best))
+		for _, b := range best {
+			filtered = append(filtered, b)
+		}
+
+		return filtered
+	}
 }
